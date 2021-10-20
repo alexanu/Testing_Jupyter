@@ -20,6 +20,7 @@ import dash_bootstrap_components as dbc # should be installed separately
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.express as px
+import plotly.graph_objects as go
 
 import ITR
 from ITR.data.excel import ExcelProviderCompany, ExcelProviderProductionBenchmark, ExcelProviderIntensityBenchmark
@@ -39,6 +40,7 @@ directory2="data"
 company_database = 'test_data_company.xlsx'
 benchm_data = 'OECM_EI_and_production_benchmarks.xlsx'
 dummy_portfolio = "example_portfolio.csv"
+# dummy_portfolio = "example_portfolio_test.csv"
 
 excel_company_data = ExcelProviderCompany(excel_path=os.path.join(directory1,directory2,company_database))
 excel_production_bm = ExcelProviderProductionBenchmark(excel_path=os.path.join(directory1,directory2,benchm_data))
@@ -91,8 +93,11 @@ controls = dbc.Row(
                         id="carb-budg",
                         min=initial_portfolio.cumulative_budget.min(),max=initial_portfolio.cumulative_budget.max(),
                         value=[initial_portfolio.cumulative_budget.min(), initial_portfolio.cumulative_budget.max()],
-                        # tooltip={'always_visible': True, 'placement': 'bottom'},
-                        # marks={i/(10**8): str(i) for i in range(0, 10**9, 10**8)},
+                        tooltip={'always_visible': True, 'placement': 'bottom'},
+                        step=10**9,
+                        marks=dict((i/(10**9),str(i/(10**9))) for i in range(0, 10**10, 10**9)),
+
+                        
                     ),
                 ]
             ),
@@ -397,7 +402,7 @@ print('got till here 4')
     Output('output-info','style'), # conditional color
     Output('comp-info','children'), # num of companies
     Output('indu-info','children'), # num of industries
-    Output('carb-budg', 'min'), Output('carb-budg', 'max'),
+    Output('carb-budg', 'min'), Output('carb-budg', 'max'), 
     # Output('temp-score', 'min'), Output('temp-score', 'max'),
 
     ],
@@ -429,9 +434,16 @@ def update_graph(
 
     print('got till here 5')
 
-    if n_clicks is None: # no portfolio was uploaded
-        # raise PreventUpdate
-        # amended_portfolio = amended_portfolio_global
+    changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0] # to catch which widgets were pressed
+    if 'run-url' in changed_id: # if "upload new pf" button was clicked
+        df_portfolio = pd.read_csv(url, encoding="iso-8859-1", sep=';')
+        companies = ITR.utils.dataframe_to_portfolio(df_portfolio)
+        initial_portfolio = temperature_score.calculate(data_warehouse=excel_provider, portfolio=companies)
+        filt_df = initial_portfolio
+        amended_portfolio_global = filt_df
+        aggregated_scores = temperature_score.aggregate_scores(filt_df)
+
+    else: # no new portfolio
         carbon_mask = (initial_portfolio.cumulative_budget >= ca_bu[0]) & (initial_portfolio.cumulative_budget <= ca_bu[1])
         temp_score_mask = (initial_portfolio.temperature_score >= te_sc[0]) & (initial_portfolio.temperature_score <= te_sc[1])
 
@@ -450,20 +462,6 @@ def update_graph(
         amended_portfolio_global = filt_df
         aggregated_scores = temperature_score.aggregate_scores(filt_df) # calc temp score for companies left in pf
 
-    else: # Event: upload new portfolio
-        df_portfolio = pd.read_csv(url, encoding="iso-8859-1", sep=';')
-        companies = ITR.utils.dataframe_to_portfolio(df_portfolio)
-
-        # amended_portfolio = temperature_score.calculate(data_warehouse=excel_provider, portfolio=companies)
-        # initial_portfolio = amended_portfolio
-        # carbon_mask = (amended_portfolio.cumulative_budget >= ca_bu[0]) & (amended_portfolio.cumulative_budget <= ca_bu[1])
-        # temp_score_mask = (amended_portfolio.temperature_score >= te_sc[0]) & (amended_portfolio.temperature_score <= te_sc[1])
-        # filt_df = amended_portfolio.loc[carbon_mask & temp_score_mask]
-
-        initial_portfolio = temperature_score.calculate(data_warehouse=excel_provider, portfolio=companies)
-        filt_df = initial_portfolio
-        amended_portfolio_global = filt_df
-        aggregated_scores = temperature_score.aggregate_scores(filt_df)
 
     # Calculate different weighting methods
     def agg_score(agg_method):
@@ -474,24 +472,63 @@ def update_graph(
         return [agg_method.value,aggregated_scores.long.S1S2.all.score]
 
     agg_temp_scores = [agg_score(i) for i in PortfolioAggregationMethod]
+    df_temp_score = pd.DataFrame(agg_temp_scores)
+    # Separate column for names on Bar chart
+    Weight_Dict = {'WATS': 'Investment<Br>weighted', # <Br> is needed to wrap x-axis label
+                'TETS': 'Total emissions<Br>weighted', 
+                'EOTS': "Enterprise Value<Br>weighted", 
+                'ECOTS': "Enterprise Value<Br>+ Cash weighted", 
+                'AOTS': "Total Assets<Br>weighted", 
+                'ROTS': "Revenues<Br>weigted",
+                'MOTS': 'Market Cap<Br>weighted'}
+    df_temp_score['Weight_method'] = df_temp_score[0].map(Weight_Dict) # Mapping code to text
+    df_temp_score[1]=df_temp_score[1].round(decimals = 2)
+    # Creating barchart
+    fig4 = px.bar(df_temp_score, x='Weight_method', y=1, text=1,title = "Comparing of different weighting methods applied to portfolio")
+    fig4.add_hline(y=2, line_dash="dot",line_color="red",annotation_text="Critical value") # horizontal line
+    fig4.update_traces(textposition='inside', textangle=0)
+    fig4.update_yaxes(title_text='Temperature score', range = [1,3])
+    fig4.update_xaxes(title_text=None, tickangle=0)
+    fig4.update_layout(transition_duration=500)
 
-    # Create a plotly.express scatter plot
+
+    # Scatter plot
     fig1 = px.scatter(filt_df, x="cumulative_target", y="cumulative_budget", size="temperature_score", 
                     color = "sector", labels={"color": "Sector"}, title="Overview of portfolio")
     fig1.update_layout(transition_duration=500)
-    fig2 = px.scatter(filt_df, x="sector", y="region", size="temperature_score", title = "Industry vs Region ratings")
-    fig2.update_layout(transition_duration=500)
-    fig3 = px.bar(filt_df.query("temperature_score > 2"), x="company_name", y="temperature_score", text ="temperature_score", color="sector",title="Worst contributors")
-    fig3.update_layout(transition_duration=500)
-    fig4 = px.bar(pd.DataFrame(agg_temp_scores), x=0, y=1, text=1, title = "Comparing of different weighting methods applied to portfolio")
-    fig4.update_layout(transition_duration=500)
+    
+
+    # Heatmap
+    trace = go.Heatmap(
+                    x = filt_df.sector,
+                    y = filt_df.region,
+                    z = filt_df.temperature_score,
+                    type = 'heatmap',
+                    colorscale = 'Temps',
+                    )
+    data = [trace]
+    fig2 = go.Figure(data = data)
+    fig2.update_layout(title = "Industry vs Region ratings")
+
+
+    fig3 = px.bar(filt_df.query("temperature_score > 2"), 
+                    x="company_name", y="temperature_score", 
+                    text ="temperature_score",
+                    color="sector",title="Worst contributors")
+    fig3.update_traces(textposition='inside', textangle=0)
+    fig3.update_yaxes(title_text='Temperature score', range = [1,4])
+    fig3.update_layout(xaxis_title = None,transition_duration=500)
+
+
+    drop_d_min = initial_portfolio.cumulative_budget.min()
+    drop_d_max = initial_portfolio.cumulative_budget.max()
 
     return (
         fig1, fig2, fig3, fig4,
         "{:.2f}".format(aggregated_scores.long.S1S2.all.score), # portfolio score
         {'color': 'ForestGreen'} if aggregated_scores.long.S1S2.all.score < 2 else {'color': 'Red'}, # conditional color
         str(len(filt_df)), str(len(filt_df.sector.unique())), # num of companies and sectors in pf
-        initial_portfolio.cumulative_budget.min(), initial_portfolio.cumulative_budget.max()
+        drop_d_min, drop_d_max, 
     )
 
 @app.callback( # reseting dropdowns
@@ -521,16 +558,16 @@ def reset_filters(n_clicks):
 def search_fi(n_clicks):
     if n_clicks > 0: # if button is clicked
         df=amended_portfolio_global[['company_name', 'company_id','region','sector','cumulative_budget','investment_value','temperature_score']]
-        df['temperature_score']=df['temperature_score'].map('{:,.2f}%'.format) # formating column
-        df['cumulative_budget'] = df['cumulative_budget'].apply(lambda x: "$ {:,.1f} Mn".format((x/1000000))) # formating column
+        df['temperature_score']=df['temperature_score'].round(decimals = 2) # formating column
+        df['cumulative_budget'] = df['cumulative_budget'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
+        df['investment_value'] = df['investment_value'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
+        df = df.sort_values(by='temperature_score', ascending=False)
         return dbc.Table.from_dataframe(df,
                                         striped=True,
                                         bordered=True,
                                         hover=True,
                                         responsive=True,
                                     )                                                          
-
-
 
 
 
