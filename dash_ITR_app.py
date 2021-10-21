@@ -93,11 +93,11 @@ controls = dbc.Row(
                         id="carb-budg",
                         min=initial_portfolio.cumulative_budget.min(),max=initial_portfolio.cumulative_budget.max(),
                         value=[initial_portfolio.cumulative_budget.min(), initial_portfolio.cumulative_budget.max()],
-                        tooltip={'always_visible': True, 'placement': 'bottom'},
-                        step=10**9,
-                        marks=dict((i/(10**9),str(i/(10**9))) for i in range(0, 10**10, 10**9)),
+                        tooltip={#'always_visible': True, 
+                                'placement': 'bottom'},
+                        # step=10**8,
+                        marks={i*(10**8): str(i) for i in range(0, int(initial_portfolio.cumulative_budget.max()/(10**8)), 10)},
 
-                        
                     ),
                 ]
             ),
@@ -234,58 +234,75 @@ macro = dbc.Row(
     ],
 )
 
+
 # Define Layout
 app.layout = dbc.Container(
                 children=[
                     dcc.Store(id='memory-output'), # not used, but the idea is to use as clipboard to store dataframe
-                    html.Div( # banner
-                        children=[
-                            # Change App Name here
-                            html.Div(
-                                className="container scalable",
-                                children=[
-                                    # Change App Name here
-                                    html.H1(id="banner-title",children=[html.A("ITR Tool",href="https://github.com/plotly/dash-svm",style={"text-decoration": "none","color": "inherit"})]),
-                                    html.Div(children='Calculation of temperature score for the provided portfolio of financial instruments \N{deciduous tree}'),
-                                    # html.Div(id="intro-text", children=dcc.Markdown(intro_text)),
-                                    # html.A(id="banner-logo",children=[html.Img(src=app.get_asset_url("dash-logo-new.png"))],href="https://plot.ly/products/dash/"),
-                                    ]
-                                )
-                            ]
-                        ),
                     html.Hr(),
                     dbc.Row( # upload portfolio
                         [
-
-                            dbc.Col(
-                                [dbc.InputGroup(
-                                            [dbc.InputGroupAddon("Put the URL of a csv portfolio here:", addon_type="prepend"),
-                                            dbc.Input(
-                                                id="input-url",
-                                                value = 'data/example_portfolio_main.csv',
-                                                # placeholder='data/example_portfolio_main.csv',
-                                                ),
-                                            ]
+                            dbc.Col(html.Img(src='https://www.os-climate.org/wp-content/uploads/2019/07/os-c-logo.png',
+                                            style={'height' : '50%'}
                                     ),
-                                ],
-                                width = 9,
+                                    width = 2,
                             ),
-                            dbc.Col(dbc.Button("Upload new portfolio", id="run-url", color="primary", block=True, ),   
-                                    width=3,
-                            ),                         
-                        ]
+                            dbc.Col(
+                                [
+                                    html.H1(id="banner-title",children=[html.A("ITR Tool",href="https://github.com/plotly/dash-svm",style={"text-decoration": "none","color": "inherit"})]),
+                                    html.Div(children='Calculation of temperature score for the provided portfolio of financial instruments \N{deciduous tree}'),                                    
+                                ],
+                                width = 6,
+                            ),
+                            dbc.Col([
+                                dcc.Upload(
+                                    id='upload-data',
+                                    children=html.Div(
+                                        dbc.Button('Upload portfolio', size="lg", color="primary",block=True),
+                                        ),
+                                    multiple=False # Allow multiple files to be uploaded
+                                ),
+                                ],
+                                width=2,
+                            ), 
+                            dbc.Col(html.Div(dbc.Button('Get template', size="lg", color="secondary",
+                                                        href="https://raw.githubusercontent.com/os-c/ITR/e772349117d41e1b62e3f9bcfb904b7e9c5e6c35/examples/data/example_portfolio.csv?token=AD3GZXC7GFH2O6EC7Z3X3KLBOE5MO",
+                                                        download="Dummy_portfolio.csv.txt",
+                                                        external_link=True,
+                                            ),
+                                    ),
+                            )
+                        ],
+                        # align='center',
                     ),
+                    # dbc.Row( # the row below is commented out, but left just in case to reverse upload functionality
+                    #     [
+                    #         dbc.Col(
+                    #             [dbc.InputGroup(
+                    #                         [dbc.InputGroupAddon("Put the URL of a csv portfolio here:", addon_type="prepend"),
+                    #                         dbc.Input(id="input-url",value = 'data/example_portfolio_main.csv',),
+                    #                         ]
+                    #                 ),
+                    #             ],
+                    #             width = 9,
+                    #         ),
+                    #         dbc.Col(dbc.Button("Upload new portfolio", id="run-url", color="primary", block=True, ),   
+                    #                 width=3,
+                    #         ),                         
+                    #     ]
+                    # ),                    
                     html.Hr(),
                     dbc.Row(
                     [
                         dbc.Col([ # filters pane
-
                             dbc.Card(dbc.CardBody(
                                                 [
-                                                    html.H5("Portfolio filters", className="pf-filter"),
-                                                    html.P("Here you could select part of your portfolio"),
+                                                    dbc.Row([ # Row with key figures
+                                                        dbc.Col(html.H5("Filters", className="pf-filter")), # PF score
+                                                        dbc.Col(html.Div(dbc.Button("Reset filters", id="reset-filters-but", outline=True, color="dark",size="sm",className="me-md-2"),className="d-grid gap-2 d-md-flex justify-content-md-end")),
+                                                    ]),
+                                                    html.P("Select part of your portfolio"),
                                                     controls,
-                                                    dbc.Button("Reset filters", id="reset-filters-but", color="secondary",size="sm"),
                                                 ]
                                             )
                                     ),     
@@ -370,13 +387,11 @@ app.layout = dbc.Container(
                                               ),
                                     ),
                                 ]),                                
-                                dbc.Row([ # Table
-                                    dbc.Button("Show members of a selected portfolio",id="table-but",color="primary",n_clicks=0),
-                                ]),
                                 html.Br(),
                                 dbc.Card(dbc.CardBody(
                                         [
-                                        # html.H5("Portfolio filters"),
+                                        html.H5("Table below contains details about the members of the selected portfolio"),
+                                        html.Br(),
                                         html.Div(id='container-button-basic'),
                                         ]
                                         ),
@@ -387,47 +402,63 @@ app.layout = dbc.Container(
                     ]
                     )
                 ],
-            style={"max-width": "1500px", "margin": "auto"},
+            style={"max-width": "1500px", 
+                    # "margin": "auto"
+                    },
             )
 print('got till here 4')
 
 
+
+def parse_contents(contents, filename):
+    content_type, content_string = contents.split(',')
+    decoded = base64.b64decode(content_string)
+    try:
+        if 'csv' in filename: # Assume that the user uploaded a CSV file
+            df = pd.read_csv(io.StringIO(decoded.decode('iso-8859-1')))
+        elif 'xls' in filename: # Assume that the user uploaded an excel file
+            df = pd.read_excel(io.BytesIO(decoded))
+        # print(df)
+        return df
+    except Exception as e:
+        print(e)
+
+
 @app.callback(
     [
-    Output("graph-2", "figure"), 
-    Output("graph-3", "figure"), 
-    Output("graph-4", "figure"), 
-    Output("graph-5", "figure"), 
+    Output("graph-2", "figure"), Output("graph-3", "figure"), Output("graph-4", "figure"), Output("graph-5", "figure"), 
     Output('output-info','children'), # portfolio score
     Output('output-info','style'), # conditional color
     Output('comp-info','children'), # num of companies
     Output('indu-info','children'), # num of industries
     Output('carb-budg', 'min'), Output('carb-budg', 'max'), 
-    # Output('temp-score', 'min'), Output('temp-score', 'max'),
-
+    Output('container-button-basic', 'children'), # Table
     ],
 
     [
 #        Input('memory-output', 'data'), # here is our imported csv in memory
         Input("carb-budg", "value"), 
         Input("temp-score", "value"),
-        # Input('table-but', 'n_clicks'),
-        Input("run-url", "n_clicks"), 
-        Input("input-url", "n_submit"),
+        # Input("run-url", "n_clicks"), 
+        # Input("input-url", "n_submit"),
         Input("sector-dropdown", "value"), 
         Input("region-dropdown", "value"),
+        Input('upload-data', 'contents'),
+
     ],
-    [State("input-url", "value")],
+    [
+        # State("input-url", "value"), # url functionality
+        State('upload-data', 'filename'), # upload functionality
+        ],
 )
 
 def update_graph(
                 # df_store,
                 ca_bu, 
                 te_sc, 
-                # table_click,
-                n_clicks, n_submit, 
                 sec, reg,
-                url,
+                list_of_contents, list_of_names, # related to upload
+                # url,
                 ):
 
     global amended_portfolio_global, initial_portfolio, temperature_score
@@ -435,8 +466,9 @@ def update_graph(
     print('got till here 5')
 
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0] # to catch which widgets were pressed
-    if 'run-url' in changed_id: # if "upload new pf" button was clicked
-        df_portfolio = pd.read_csv(url, encoding="iso-8859-1", sep=';')
+    if 'upload-data' in changed_id: # if "upload new pf" button was clicked    
+        df_portfolio = parse_contents(list_of_contents, list_of_names)
+        # df_portfolio = pd.read_csv(url, encoding="iso-8859-1", sep=';')
         companies = ITR.utils.dataframe_to_portfolio(df_portfolio)
         initial_portfolio = temperature_score.calculate(data_warehouse=excel_provider, portfolio=companies)
         filt_df = initial_portfolio
@@ -523,12 +555,25 @@ def update_graph(
     drop_d_min = initial_portfolio.cumulative_budget.min()
     drop_d_max = initial_portfolio.cumulative_budget.max()
 
+    df=amended_portfolio_global[['company_name', 'company_id','region','sector','cumulative_budget','investment_value','temperature_score']]
+    df['temperature_score']=df['temperature_score'].round(decimals = 2) # formating column
+    df['cumulative_budget'] = df['cumulative_budget'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
+    df['investment_value'] = df['investment_value'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
+    df = df.sort_values(by='temperature_score', ascending=False)
+
     return (
         fig1, fig2, fig3, fig4,
         "{:.2f}".format(aggregated_scores.long.S1S2.all.score), # portfolio score
         {'color': 'ForestGreen'} if aggregated_scores.long.S1S2.all.score < 2 else {'color': 'Red'}, # conditional color
         str(len(filt_df)), str(len(filt_df.sector.unique())), # num of companies and sectors in pf
         drop_d_min, drop_d_max, 
+        dbc.Table.from_dataframe(df,
+                                striped=True,
+                                bordered=True,
+                                hover=True,
+                                responsive=True,
+                            )       
+
     )
 
 @app.callback( # reseting dropdowns
@@ -550,25 +595,6 @@ def reset_filters(n_clicks):
         'all_values',
         'all_values',
     )
-
-@app.callback( # showing table
-    Output('container-button-basic', 'children'),
-    [Input('table-but', 'n_clicks')])
-
-def search_fi(n_clicks):
-    if n_clicks > 0: # if button is clicked
-        df=amended_portfolio_global[['company_name', 'company_id','region','sector','cumulative_budget','investment_value','temperature_score']]
-        df['temperature_score']=df['temperature_score'].round(decimals = 2) # formating column
-        df['cumulative_budget'] = df['cumulative_budget'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
-        df['investment_value'] = df['investment_value'].apply(lambda x: "${:,.1f} Mn".format((x/1000000))) # formating column
-        df = df.sort_values(by='temperature_score', ascending=False)
-        return dbc.Table.from_dataframe(df,
-                                        striped=True,
-                                        bordered=True,
-                                        hover=True,
-                                        responsive=True,
-                                    )                                                          
-
 
 
 if __name__ == "__main__":
